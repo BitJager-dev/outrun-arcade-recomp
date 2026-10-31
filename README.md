@@ -29,7 +29,7 @@ The same recompiled code builds as a native Linux executable. On Linux the SDK's
 Vulkan-only (D3D12 is compiled out), so nothing needs picking: the game renders through Vulkan. No Wine/Proton.
 
 **Status:** builds with no source changes to the recompiled code; boots, extracts the package on first start
-and runs the attract-mode race with correct graphics (audio system starts; sound not yet checked by ear).
+and plays with correct graphics and sound; saving and loading work.
 Tested on CachyOS (Arch), clang 22, AMD Radeon
 8060S (RADV, Mesa), KDE Plasma Wayland (through Xwayland). Not yet tested: NVIDIA, Steam Deck native, full
 playthroughs.
@@ -80,7 +80,7 @@ logs to `logs/`.
   `outrun_arcade.toml`.
 
 ## In-game settings (F1 or Esc)
-Same menu as the Poker Smash / ReBirth recomps: display mode (also F11), monitor, window size, render resolution, aspect ratio, texture filtering, audio buffer, keyboard on/off, launcher on/off, per-button key rebinding, quit. Saved to `outrun_arcade.toml` next to the exe. F3 = performance overlay. Gamepad works in the menu too (B closes it). VSync is always on (no option; `vsync = false` in the toml is ignored). Runs as the full game.
+Same menu as the Poker Smash / ReBirth recomps: display mode (also F11), monitor, window size, render resolution, aspect ratio, texture filtering, audio buffer, keyboard on/off, launcher on/off, per-button key rebinding, quit. Saved to `outrun_arcade.toml` next to the exe. F3 = performance overlay. Gamepad works in the menu too (B closes it). VSync is always on so the game doesn't run too fast (no option; `vsync = false` in the toml is ignored). Runs as the full game.
 
 ### Default keyboard layout
 | Action | Controller | Key |
