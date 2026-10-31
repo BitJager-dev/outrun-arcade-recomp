@@ -85,7 +85,7 @@ logs to `logs/`.
   `outrun_arcade.toml`.
 
 ## In-game settings (F1 or Esc)
-Same menu as the Poker Smash / ReBirth recomps: display mode (also F11), monitor, window size, render resolution, aspect ratio, texture filtering, audio buffer, keyboard on/off, launcher on/off, per-button key rebinding, quit. Saved to `outrun_arcade.toml` next to the exe. F3 = performance overlay. Gamepad works in the menu too (B closes it). VSync is always on so the game doesn't run too fast (no option; `vsync = false` in the toml is ignored). Runs as the full game.
+Same menu as the Poker Smash / ReBirth recomps: display mode (also F11), monitor, window size, render resolution, aspect ratio, texture filtering, audio buffer, keyboard on/off, launcher on/off, per-button key rebinding, quit. Saved to `outrun_arcade.toml` next to the exe. F3 = performance overlay. Gamepad works in the menu too (B closes it). VSync is always on so the game doesn't run too fast (no option; `vsync = false` in the toml is ignored). On Vulkan the frames are also presented in step with the display refresh (FIFO, relaxed where available) instead of the SDK's default immediate mode, so there is no tearing. Runs as the full game.
 
 ### Default keyboard layout
 | Action | Controller | Key |

@@ -115,6 +115,13 @@ class OutrunArcadeApp : public rex::ReXApp {
     rex::cvar::RegisterChangeCallback("vsync", [](std::string_view, std::string_view value) {
       if (value != "true") rex::cvar::SetFlagByName("vsync", "true");
     });
+    // The cvar above paces the game (60 Hz guest vblank); the Vulkan presenter
+    // still picks IMMEDIATE by default, which tears and paces unevenly. Leave
+    // it FIFO (relaxed where available): frames follow the display refresh, a
+    // late one shows at once instead of waiting a whole refresh. No-op where
+    // these cvars don't exist.
+    rex::cvar::SetFlagByName("vulkan_allow_present_mode_immediate", "false");
+    rex::cvar::SetFlagByName("vulkan_allow_present_mode_mailbox", "false");
   }
 
   // Launcher: the window, Vulkan presenter and ImGui exist, the runtime does
