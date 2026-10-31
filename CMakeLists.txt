@@ -16,6 +16,7 @@ set(OUTRUNARCADE_SOURCES
     src/game_menu.cpp
     src/display_setup.cpp
     src/src_trace.cpp
+    src/title_exit.cpp
     src/crash_handler.cpp
     src/callout_hold.cpp
     src/voice_hooks.cpp

@@ -122,6 +122,7 @@ Program Files) the per-user folder is used as before. `--user_data_root=<dir>` o
 |---|---|
 | `outrun_arcade_manifest.toml` | ReXGlue project manifest (codegen input) |
 | `outrun_arcade_overrides.toml` | Pointer-only functions |
+| `src/title_exit.cpp` | Exit from the game's own menu closes the window (was a hang) |
 | `generated/` | Recompiled C++ output of `rexglue codegen` |
 | `src/outrun_arcade_app.h` | App class - game folder default, Xenos GPU plugin, full-game license, first-launch defaults, launcher, menu/F11 binds |
 | `src/game_menu.*`, `src/game_keys.h` | Launcher + F1/Esc settings menu and this game's key layout |
@@ -152,6 +153,12 @@ Program Files) the per-user folder is used as before. `--user_data_root=<dir>` o
   stop (measured from real hardware). Stops from that init path skip voices
   started in the last 600 ms. `outrun_voice_trace = true` writes
   voice_api_trace.txt (every voice call, with callers).
+
+## Other fixes
+- **Quit from the game's menu hung** (`src/title_exit.cpp`): the game exits through XLaunchNewImage
+  (XamLoaderLaunchTitle, back to the dashboard on a 360). The SDK terminated the title but the window only closes
+  when the game's main thread ends, which it didn't, so the game froze after saving. The exit now closes the
+  window like the close button does.
 
 ## Diagnostics
 - Crash reporter: `crash-*.txt` + `.dmp` next to the exe; decode offsets with

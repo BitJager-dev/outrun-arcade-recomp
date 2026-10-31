@@ -22,6 +22,7 @@
 #include <rex/ui/keybinds.h>
 
 void InstallCrashHandler();  // src/crash_handler.cpp
+void SetTitleExitHandler(std::function<void()> quit);  // src/title_exit.cpp
 
 #include <imgui.h>
 
@@ -156,6 +157,10 @@ class OutrunArcadeApp : public rex::ReXApp {
   // The game must not see keys/buttons while the menu is open.
   void OnPostSetup() override {
     InstallCrashHandler();  // re-assert after SDL/runtime init
+    // Exit from the game's own menu closes the window (src/title_exit.cpp).
+    SetTitleExitHandler([this] {
+      app_context().CallInUIThread([this] { window()->RequestClose(); });
+    });
     auto* input_sys = static_cast<rex::input::InputSystem*>(runtime()->input_system());
     if (input_sys && imgui_drawer()) {
       input_sys->SetActiveCallback([this]() {
