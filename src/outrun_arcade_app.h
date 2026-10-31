@@ -107,6 +107,13 @@ class OutrunArcadeApp : public rex::ReXApp {
       REXLOG_INFO("Steam Deck detected: texture filtering off, small audio buffer");
     }
     REXLOG_INFO("Audio buffer: {} frames", rex::cvar::Query<int32_t>("audio_maxqframes"));
+    // VSync is always on: no menu option, a saved "vsync = false" is ignored,
+    // and anything that turns it off at runtime (e.g. the SDK's F4 overlay)
+    // is undone straight away.
+    rex::cvar::SetFlagByName("vsync", "true");
+    rex::cvar::RegisterChangeCallback("vsync", [](std::string_view, std::string_view value) {
+      if (value != "true") rex::cvar::SetFlagByName("vsync", "true");
+    });
   }
 
   // Launcher: the window, Vulkan presenter and ImGui exist, the runtime does

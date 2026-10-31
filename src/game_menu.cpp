@@ -53,7 +53,6 @@ enum MainRow {
   kMonitor,
   kWindowSize,
   kRenderRes,
-  kVsync,
   kAspect,
   kFiltering,
   kAudioBuffer,
@@ -118,7 +117,6 @@ const char* MainLabel(int row) {
     case kMonitor: return "Monitor";
     case kWindowSize: return "Window size";
     case kRenderRes: return "Render resolution";
-    case kVsync: return "VSync";
     case kAspect: return "Aspect ratio";
     case kFiltering: return "Texture filtering";
     case kAudioBuffer: return "Audio buffer";
@@ -140,7 +138,6 @@ const char* MainNote(int row, bool launcher) {
     case kRenderRes:
       return launcher ? "Internal rendering resolution. Auto matches your monitor."
                       : "Internal rendering resolution. Applies next launch.";
-    case kVsync: return "Wait for the monitor refresh. Off can tear.";
     case kAspect: return "Keep 16:9 adds black bars on other window shapes.";
     case kFiltering: return "Sharper textures seen at an angle.";
     case kAudioBuffer:
@@ -180,7 +177,6 @@ std::string MainValue(int row) {
       if (i > 0) return kRenderLabels[i - 1];
       return std::string("Auto  (") + kRenderLabels[display::AutoRenderScale() - 1] + ")";
     }
-    case kVsync: return GetBool("vsync") ? "On" : "Off";
     case kAspect: return GetBool("present_letterbox") ? "Keep 16:9" : "Stretch to window";
     case kFiltering: return kAnisoLabels[AnisoIndex()];
     case kAudioBuffer: return kAudioLabels[AudioIndex()];
@@ -281,7 +277,7 @@ GameMenu::GameMenu(rex::ui::ImGuiDrawer* drawer, MenuHost host)
   if (host_.launcher) rows_.push_back(kStart);
   rows_.push_back(kDisplayMode);
   if (display::ListMonitors().size() > 1) rows_.push_back(kMonitor);
-  for (int r : {kWindowSize, kRenderRes, kVsync, kAspect, kFiltering, kAudioBuffer, kKeyboard,
+  for (int r : {kWindowSize, kRenderRes, kAspect, kFiltering, kAudioBuffer, kKeyboard,
                 kLauncher, kEditKeys}) {
     rows_.push_back(r);
   }
@@ -398,7 +394,6 @@ void GameMenu::Change(int row, int dir) {
       if (!host_.launcher) status_ = "Render resolution changes on the next launch.";
       break;
     }
-    case kVsync: SetBool("vsync", !GetBool("vsync")); break;
     case kAspect: SetBool("present_letterbox", !GetBool("present_letterbox")); break;
     case kFiltering: {
       int i = (AnisoIndex() + dir + kAnisoCount) % kAnisoCount;
