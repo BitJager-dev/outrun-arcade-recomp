@@ -1,6 +1,7 @@
 // In-game settings menu - see game_menu.h. Per-game key layout: game_keys.h.
 
 #include "game_menu.h"
+#include "display_setup.h"
 #include "game_keys.h"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include <SDL3/SDL.h>
 #include <imgui.h>
 
 #include <rex/cvar.h>
@@ -19,6 +21,8 @@ REXCVAR_DEFINE_BOOL(recomp_defaults_applied, false, "Recomp",
                     "First-launch defaults have been applied");
 // Bumped when a newer build adds a default (2 = per-game audio buffer).
 REXCVAR_DEFINE_INT32(recomp_defaults_version, 0, "Recomp", "Last applied defaults version");
+// Settings screen before the game starts. --recomp_launcher=false skips it once.
+REXCVAR_DEFINE_BOOL(recomp_launcher, true, "Recomp", "Show the launcher before the game starts");
 
 namespace recomp_ui {
 namespace {
@@ -44,7 +48,9 @@ void SetStr(const char* n, const std::string& v) { cvar::SetFlagByName(n, v); }
 
 // ------------------------------------------------------------------ main page
 enum MainRow {
+  kStart,
   kDisplayMode,
+  kMonitor,
   kWindowSize,
   kRenderRes,
   kVsync,
@@ -52,6 +58,7 @@ enum MainRow {
   kFiltering,
   kAudioBuffer,
   kKeyboard,
+  kLauncher,
   kEditKeys,
   kCloseMenu,
   kQuit,
@@ -90,9 +97,25 @@ int AudioIndex() {
 
 const char* const kRenderLabels[] = {"1x  1280x720 (original)", "2x  2560x1440", "3x  3840x2160"};
 
+// Render resolution choices: 0 = auto (from the monitor), 1-3 = fixed scale.
+int RenderIndex() {
+  return GetBool("recomp_render_auto") ? 0 : std::clamp(GetInt("resolution_scale"), 1, 3);
+}
+
+std::string MonitorValue() {
+  const int m = GetInt("monitor");
+  const auto monitors = display::ListMonitors();
+  if (m <= 0 || m > int(monitors.size())) return "Primary";
+  const auto& mon = monitors[m - 1];
+  return std::to_string(m) + ": " + mon.name + "  " + std::to_string(mon.width) + "x" +
+         std::to_string(mon.height);
+}
+
 const char* MainLabel(int row) {
   switch (row) {
+    case kStart: return "Start game";
     case kDisplayMode: return "Display mode";
+    case kMonitor: return "Monitor";
     case kWindowSize: return "Window size";
     case kRenderRes: return "Render resolution";
     case kVsync: return "VSync";
@@ -100,6 +123,7 @@ const char* MainLabel(int row) {
     case kFiltering: return "Texture filtering";
     case kAudioBuffer: return "Audio buffer";
     case kKeyboard: return "Keyboard controls";
+    case kLauncher: return "Launcher at start";
     case kEditKeys: return "Edit keyboard keys";
     case kCloseMenu: return "Close menu";
     case kQuit: return "Quit game";
@@ -107,16 +131,23 @@ const char* MainLabel(int row) {
   return "";
 }
 
-const char* MainNote(int row) {
+const char* MainNote(int row, bool launcher) {
   switch (row) {
-    case kDisplayMode: return "F11 also switches between windowed and fullscreen.";
-    case kWindowSize: return "Size of the window in windowed mode. Applies next launch.";
-    case kRenderRes: return "Internal rendering resolution. Applies next launch.";
+    case kStart: return "Start OutRun with these settings.";
+    case kDisplayMode: return "Fullscreen uses the monitor's own resolution. F11 also switches.";
+    case kMonitor: return "Which monitor the game shows on.";
+    case kWindowSize: return "Size of the window in windowed mode.";
+    case kRenderRes:
+      return launcher ? "Internal rendering resolution. Auto matches your monitor."
+                      : "Internal rendering resolution. Applies next launch.";
     case kVsync: return "Wait for the monitor refresh. Off can tear.";
     case kAspect: return "Keep 16:9 adds black bars on other window shapes.";
     case kFiltering: return "Sharper textures seen at an angle.";
-    case kAudioBuffer: return "Bigger fixes crackles and dropouts, smaller has less delay. Next launch.";
+    case kAudioBuffer:
+      return launcher ? "Bigger fixes crackles and dropouts, smaller has less delay."
+                      : "Bigger fixes crackles and dropouts, smaller has less delay. Next launch.";
     case kKeyboard: return "Play with the keyboard as controller 1.";
+    case kLauncher: return "Show this screen before the game. Off = straight into the game.";
     case kEditKeys: return "Choose which key presses each controller button.";
   }
   return nullptr;
@@ -142,18 +173,24 @@ int AnisoIndex() {
 std::string MainValue(int row) {
   switch (row) {
     case kDisplayMode: return GetBool("fullscreen") ? "Fullscreen" : "Windowed";
+    case kMonitor: return MonitorValue();
     case kWindowSize: return kWindowSizes[WindowSizeIndex()].label;
-    case kRenderRes: return kRenderLabels[std::clamp(GetInt("resolution_scale"), 1, 3) - 1];
+    case kRenderRes: {
+      int i = RenderIndex();
+      if (i > 0) return kRenderLabels[i - 1];
+      return std::string("Auto  (") + kRenderLabels[display::AutoRenderScale() - 1] + ")";
+    }
     case kVsync: return GetBool("vsync") ? "On" : "Off";
     case kAspect: return GetBool("present_letterbox") ? "Keep 16:9" : "Stretch to window";
     case kFiltering: return kAnisoLabels[AnisoIndex()];
     case kAudioBuffer: return kAudioLabels[AudioIndex()];
     case kKeyboard: return GetBool("mnk_mode") ? "On" : "Off";
+    case kLauncher: return GetBool("recomp_launcher") ? "On" : "Off";
   }
   return {};
 }
 
-bool IsOptionRow(int row) { return row <= kKeyboard; }
+bool IsOptionRow(int row) { return row >= kDisplayMode && row <= kLauncher; }
 
 // ------------------------------------------------------------------ keys page
 using game_keys::KeyBind;
@@ -240,9 +277,80 @@ bool RowClicked(float x, float y, float w, float h, int mouse_button) {
 // ================================================================== GameMenu
 
 GameMenu::GameMenu(rex::ui::ImGuiDrawer* drawer, MenuHost host)
-    : ImGuiDialog(drawer), host_(std::move(host)) {}
+    : ImGuiDialog(drawer), host_(std::move(host)) {
+  if (host_.launcher) rows_.push_back(kStart);
+  rows_.push_back(kDisplayMode);
+  if (display::ListMonitors().size() > 1) rows_.push_back(kMonitor);
+  for (int r : {kWindowSize, kRenderRes, kVsync, kAspect, kFiltering, kAudioBuffer, kKeyboard,
+                kLauncher, kEditKeys}) {
+    rows_.push_back(r);
+  }
+  if (!host_.launcher) rows_.push_back(kCloseMenu);
+  rows_.push_back(kQuit);
+  // Gamepads for menu navigation (the SDK's input system only opens them once
+  // the game runs). Init/open are reference counted, so this doesn't disturb it.
+  SDL_InitSubSystem(SDL_INIT_GAMEPAD);
+}
 
-GameMenu::~GameMenu() = default;
+GameMenu::~GameMenu() {
+  for (SDL_Gamepad* g : gamepads_) SDL_CloseGamepad(g);
+  SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+}
+
+bool GameMenu::LauncherEnabled() { return GetBool("recomp_launcher"); }
+
+void GameMenu::PollGamepads() {
+  int count = 0;
+  SDL_JoystickID* ids = SDL_GetGamepads(&count);
+  for (int i = 0; ids && i < count; i++) {
+    if (!SDL_GetGamepadFromID(ids[i])) {
+      if (SDL_Gamepad* g = SDL_OpenGamepad(ids[i])) gamepads_.push_back(g);
+    }
+  }
+  SDL_free(ids);
+
+  bool dir[4] = {}, accept = false, back = false;  // up, down, left, right
+  constexpr Sint16 kDead = 16000;
+  for (SDL_Gamepad* g : gamepads_) {
+    if (!SDL_GamepadConnected(g)) continue;
+    const Sint16 x = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTX);
+    const Sint16 y = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTY);
+    dir[0] |= SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_UP) || y < -kDead;
+    dir[1] |= SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_DOWN) || y > kDead;
+    dir[2] |= SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_LEFT) || x < -kDead;
+    dir[3] |= SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_RIGHT) || x > kDead;
+    accept |= SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_SOUTH) ||
+              SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_START);
+    back |= SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_EAST);
+  }
+
+  // Directions: press, then repeat after 0.4 s every 0.12 s while held.
+  pad_ = {};
+  int held = -1;
+  for (int i = 0; i < 4; i++) {
+    if (dir[i]) { held = i; break; }
+  }
+  const double now = ImGui::GetTime();
+  bool fire = false;
+  if (held != pad_held_) {
+    fire = held >= 0;
+    pad_next_ = now + 0.4;
+  } else if (held >= 0 && now >= pad_next_) {
+    fire = true;
+    pad_next_ = now + 0.12;
+  }
+  pad_held_ = held;
+  if (fire) {
+    pad_.up = held == 0;
+    pad_.down = held == 1;
+    pad_.left = held == 2;
+    pad_.right = held == 3;
+  }
+  pad_.accept = accept && !pad_was_[0];
+  pad_.back = back && !pad_was_[1];
+  pad_was_[0] = accept;
+  pad_was_[1] = back;
+}
 
 void GameMenu::OnClose() {
   if (host_.on_closed) host_.on_closed();
@@ -269,18 +377,25 @@ void GameMenu::Change(int row, int dir) {
       if (host_.set_fullscreen) host_.set_fullscreen(fs);
       break;
     }
+    case kMonitor: {
+      const int n = int(display::ListMonitors().size()) + 1;  // + "Primary" (0)
+      const int m = (std::clamp(GetInt("monitor"), 0, n - 1) + dir + n) % n;
+      SetInt("monitor", m);
+      display::MoveToMonitor(m);
+      break;
+    }
     case kWindowSize: {
       int i = (WindowSizeIndex() + dir + kWindowSizeCount) % kWindowSizeCount;
       SetInt("window_width", kWindowSizes[i].w);
       SetInt("window_height", kWindowSizes[i].h);
-      status_ = "Window size changes on the next launch.";
+      display::ResizeWindow(kWindowSizes[i].w, kWindowSizes[i].h);
       break;
     }
     case kRenderRes: {
-      int v = std::clamp(GetInt("resolution_scale"), 1, 3) - 1;
-      v = (v + dir + 3) % 3;
-      SetInt("resolution_scale", v + 1);
-      status_ = "Render resolution changes on the next launch.";
+      int i = (RenderIndex() + dir + 4) % 4;
+      SetBool("recomp_render_auto", i == 0);
+      if (i > 0) SetInt("resolution_scale", i);
+      if (!host_.launcher) status_ = "Render resolution changes on the next launch.";
       break;
     }
     case kVsync: SetBool("vsync", !GetBool("vsync")); break;
@@ -293,10 +408,11 @@ void GameMenu::Change(int row, int dir) {
     case kAudioBuffer: {
       int i = (AudioIndex() + dir + kAudioCount) % kAudioCount;
       SetInt("audio_maxqframes", kAudioFrames[i]);
-      status_ = "Audio buffer changes on the next launch.";
+      if (!host_.launcher) status_ = "Audio buffer changes on the next launch.";
       break;
     }
     case kKeyboard: SetBool("mnk_mode", !GetBool("mnk_mode")); break;
+    case kLauncher: SetBool("recomp_launcher", !GetBool("recomp_launcher")); break;
     default: return;
   }
   Save();
@@ -313,6 +429,7 @@ void GameMenu::OnDraw(ImGuiIO& io) {
                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground |
                    ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
   float scale = std::max(0.6f, display.y / 900.0f);
+  PollGamepads();
   if (page_ == Page::kMain) {
     DrawMain(scale);
   } else {
@@ -322,15 +439,20 @@ void GameMenu::OnDraw(ImGuiIO& io) {
 }
 
 void GameMenu::DrawMain(float scale) {
-  // ---- keyboard
-  int n = kMainRowCount;
-  if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) { sel_ = (sel_ + n - 1) % n; quit_armed_ = false; }
-  if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) { sel_ = (sel_ + 1) % n; quit_armed_ = false; }
+  // ---- keyboard / gamepad
+  const int n = int(rows_.size());
+  if (ImGui::IsKeyPressed(ImGuiKey_UpArrow) || pad_.up) { sel_ = (sel_ + n - 1) % n; quit_armed_ = false; }
+  if (ImGui::IsKeyPressed(ImGuiKey_DownArrow) || pad_.down) { sel_ = (sel_ + 1) % n; quit_armed_ = false; }
   int activate = 0;  // -1 left, +1 right/enter
-  if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) activate = -1;
+  if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || pad_.left) activate = -1;
   if (ImGui::IsKeyPressed(ImGuiKey_RightArrow) || ImGui::IsKeyPressed(ImGuiKey_Enter) ||
-      ImGui::IsKeyPressed(ImGuiKey_Space)) {
+      ImGui::IsKeyPressed(ImGuiKey_Space) || pad_.right || pad_.accept) {
     activate = 1;
+  }
+  // B closes the in-game menu.
+  if (pad_.back && !host_.launcher) {
+    Close();
+    return;
   }
 
   // ---- layout
@@ -342,9 +464,10 @@ void GameMenu::DrawMain(float scale) {
   float px = (io.DisplaySize.x - pw) / 2, py = (io.DisplaySize.y - ph) / 2;
   float value_x = px + 20 * scale + p.TextWidth("M") * 20.0f;
 
-  p.Rect(0, 0, io.DisplaySize.x, io.DisplaySize.y, kShade);
+  // The launcher has no game picture behind it: solid background.
+  p.Rect(0, 0, io.DisplaySize.x, io.DisplaySize.y, host_.launcher ? IM_COL32(0, 0, 0, 255) : kShade);
   p.Rect(px, py, pw, ph, kPanel);
-  std::string title = host_.title + "  -  SETTINGS";
+  std::string title = host_.title + (host_.launcher ? "" : "  -  SETTINGS");
   p.Text(px + 20 * scale, py + 14 * scale, title.c_str(), kGold);
 
   float y = py + 14 * scale + lh * 1.4f;
@@ -359,14 +482,15 @@ void GameMenu::DrawMain(float scale) {
     if (RowClicked(rx, y - 4 * scale, rw, lh, ImGuiMouseButton_Left)) { sel_ = i; activate = 1; }
     if (RowClicked(rx, y - 4 * scale, rw, lh, ImGuiMouseButton_Right)) { sel_ = i; activate = -1; }
 
+    const int row = rows_[i];
     if (i == sel_) p.Rect(rx, y - 4 * scale, rw, lh, kHighlight);
-    p.Text(px + 20 * scale, y, MainLabel(i), i == sel_ ? kWhite : kGrey);
-    if (IsOptionRow(i)) {
-      std::string v = "< " + MainValue(i) + " >";
+    p.Text(px + 20 * scale, y, MainLabel(row), row == kStart ? kGold : i == sel_ ? kWhite : kGrey);
+    if (IsOptionRow(row)) {
+      std::string v = "< " + MainValue(row) + " >";
       p.Text(value_x, y, v.c_str(), kWhite);
-    } else if (i == kEditKeys) {
+    } else if (row == kEditKeys) {
       p.Text(value_x, y, ">", kWhite);
-    } else if (i == kQuit && i == sel_ && quit_armed_) {
+    } else if (row == kQuit && i == sel_ && quit_armed_) {
       p.Text(value_x, y, "press again to quit", kGold);
     }
     y += lh;
@@ -374,10 +498,16 @@ void GameMenu::DrawMain(float scale) {
 
   // ---- act on the selection
   if (activate != 0) {
-    if (IsOptionRow(sel_)) {
-      Change(sel_, activate);
+    const int row = rows_[sel_];
+    if (IsOptionRow(row)) {
+      Change(row, activate);
     } else if (activate > 0) {
-      switch (sel_) {
+      switch (row) {
+        case kStart:
+          Save();
+          if (host_.start) host_.start();
+          Close();
+          return;
         case kEditKeys:
           page_ = Page::kKeys;
           keys_sel_ = 0;
@@ -396,12 +526,14 @@ void GameMenu::DrawMain(float scale) {
     }
   }
 
-  const char* note = MainNote(sel_);
+  const char* note = MainNote(rows_[sel_], host_.launcher);
   std::string bottom = !status_.empty() ? status_
                        : note             ? note
                                           : "Up/Down select, Left/Right change. Saved automatically.";
   p.Text(px + 20 * scale, y + lh * 0.4f, bottom.c_str(), status_.empty() ? kGrey : kGold, 0.75f);
-  p.Text(px + 20 * scale, y + lh * 1.3f, "F1 / Esc: close     F3: performance     F11: fullscreen",
+  p.Text(px + 20 * scale, y + lh * 1.3f,
+         host_.launcher ? "Enter / A: select     Left/Right: change     F11: fullscreen"
+                        : "F1 / Esc: close     F3: performance     F11: fullscreen",
          kGrey, 0.75f);
 }
 
@@ -423,16 +555,16 @@ void GameMenu::DrawKeys(float scale) {
       }
     }
   } else {
-    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) keys_sel_ = (keys_sel_ + n - 1) % n;
-    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) keys_sel_ = (keys_sel_ + 1) % n;
+    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow) || pad_.up) keys_sel_ = (keys_sel_ + n - 1) % n;
+    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow) || pad_.down) keys_sel_ = (keys_sel_ + 1) % n;
     if (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) ||
-        ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false)) {
+        ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) || pad_.back || pad_.left) {
       page_ = Page::kMain;
       return;
     }
   }
   bool activate = capturing_ < 0 && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
-                                     ImGui::IsKeyPressed(ImGuiKey_Space, false));
+                                     ImGui::IsKeyPressed(ImGuiKey_Space, false) || pad_.accept);
 
   ImGuiIO& io = ImGui::GetIO();
   Painter p{ImGui::GetWindowDrawList(), ImGui::GetFont(), 24.0f * scale};
@@ -442,7 +574,7 @@ void GameMenu::DrawKeys(float scale) {
   float px = (io.DisplaySize.x - pw) / 2, py = (io.DisplaySize.y - ph) / 2;
   float value_x = px + 20 * scale + p.TextWidth("M") * 22.0f;
 
-  p.Rect(0, 0, io.DisplaySize.x, io.DisplaySize.y, kShade);
+  p.Rect(0, 0, io.DisplaySize.x, io.DisplaySize.y, host_.launcher ? IM_COL32(0, 0, 0, 255) : kShade);
   p.Rect(px, py, pw, ph, kPanel);
   p.Text(px + 20 * scale, py + 14 * scale, "KEYBOARD KEYS", kGold);
 
