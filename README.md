@@ -78,6 +78,20 @@ Same menu as the Poker Smash / ReBirth recomps: display mode (also F11), window 
 - `tools/diagnostics/voice_trace.cpp` (not built): logs who destroys a voice.
 
 
+## Shader cache
+The SDK stores every shader and pipeline the game uses in `cache/shaders/shareable/` in the user data folder
+(`58410968.xsh` and `58410968.fbo.vk.xpso` on Vulkan). On the next start it prepares all of them up front, so only
+effects never seen before are compiled mid-race, which shows as a short hitch the first time. The files don't depend
+on the GPU, so caches from several machines or play sessions can be combined:
+
+```
+python3 tools/merge_shader_cache.py <out_dir> <cache_dir> [<cache_dir> ...]
+```
+
+Each record is checked against its hash and kept once (needs the `xxhash` Python module). Copy the merged files into
+`cache/shaders/shareable/` of an install before its first race. They contain the game's shader code, so they belong
+with your own game files and are not committed or shipped here.
+
 ## Disclaimer
 Unofficial fan project, not affiliated with or endorsed by SEGA, Sumo Digital or Microsoft. This repository and its
 releases contain no game data (graphics, sound, music, tracks): those come from your own package. `generated/` and the
