@@ -22,7 +22,9 @@ JOBS="${JOBS:-$(nproc)}"
 export CC="${CC:-clang}" CXX="${CXX:-clang++}"
 
 # ---------- ReXGlue SDK ----------
-if [[ ! -f "$SDK_INSTALL/.installed" ]]; then
+# Rebuilt when patches/sdk/ changes (the install marker holds its hash).
+SDK_STAMP="$SDK_REF $(cat "$ROOT"/patches/sdk/*.patch 2>/dev/null | sha1sum | cut -c1-12)"
+if [[ "$(cat "$SDK_INSTALL/.installed" 2>/dev/null)" != "$SDK_STAMP" ]]; then
   if [[ ! -d "$SDK_SRC" ]]; then
     git clone --branch "$SDK_REF" --recurse-submodules --shallow-submodules \
       https://github.com/rexglue/rexglue-sdk.git "$SDK_SRC"
@@ -45,6 +47,16 @@ if [[ ! -f "$SDK_INSTALL/.installed" ]]; then
     done
     touch "$SDK_SRC/.outrun_patched"
   fi
+  # This repo's Linux fixes (patches/sdk/, upstream SDK fixes backported to
+  # the pinned tag). Each one is skipped if already applied.
+  for p in "$ROOT"/patches/sdk/*.patch; do
+    [[ -e "$p" ]] || continue
+    if git -C "$SDK_SRC" apply --reverse --check "$p" 2>/dev/null; then
+      continue
+    fi
+    git -C "$SDK_SRC" apply --whitespace=nowarn "$p"
+    echo "SDK patch: $(basename "$p")"
+  done
   cmake -S "$SDK_SRC" -B "$SDK_SRC/out/build/linux-amd64" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \
@@ -52,7 +64,7 @@ if [[ ! -f "$SDK_INSTALL/.installed" ]]; then
     -DREXGLUE_ENABLE_TRACY=OFF \
     -DCMAKE_INSTALL_PREFIX="$SDK_INSTALL"
   cmake --build "$SDK_SRC/out/build/linux-amd64" --target install --parallel "$JOBS"
-  touch "$SDK_INSTALL/.installed"
+  echo "$SDK_STAMP" > "$SDK_INSTALL/.installed"
 fi
 
 # ---------- Game ----------

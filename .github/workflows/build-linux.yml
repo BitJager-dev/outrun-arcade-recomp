@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: out/linux-deps/rexglue-sdk-install
-          key: rexglue-sdk-${{ env.REXGLUE_SDK_REF }}-${{ env.REXGLUE_PATCH_LEVEL }}-linux-amd64
+          key: rexglue-sdk-${{ env.REXGLUE_SDK_REF }}-${{ env.REXGLUE_PATCH_LEVEL }}-${{ hashFiles('patches/sdk/**') }}-linux-amd64
 
       - name: Compiler cache for generated code
         uses: hendrikmuhs/ccache-action@v1.2

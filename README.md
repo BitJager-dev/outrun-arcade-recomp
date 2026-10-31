@@ -71,6 +71,11 @@ logs to `logs/`.
   `coredumpctl gdb outrun_arcade`, with `outrun_arcade.map` for recompiled function names.
 - **Quitting:** use F1 > Quit or the window close button. The process does not exit on SIGTERM
   (`kill`/`timeout`); use `pkill -KILL outrun_arcade` from a shell.
+- **Saves (SDK fix):** `patches/sdk/0001-posix-file-access-mode.patch` backports rexglue-sdk commit
+  `0bd1fd552` (after v0.9.0). Without it the POSIX file layer opened read+write files write-only
+  (`O_RDONLY | O_WRONLY` = `O_WRONLY`), so loading the save failed with "end of file" and the game reported its
+  save data as damaged. Windows was never affected. `tools/build_linux.sh` applies `patches/sdk/` after the
+  rexglue-sdk-builds patches; drop it when moving to an SDK release that includes the fix.
 - **GPU choice:** with more than one Vulkan device, set `vulkan_device` (index, listed in the log) in
   `outrun_arcade.toml`.
 
@@ -125,6 +130,7 @@ Program Files) the per-user folder is used as before. `--user_data_root=<dir>` o
 | `tools/` | Package/XEX extraction (STFS, XEX2 basic + LZX), pointer-function scan, label check |
 | `.github/workflows/build-windows.yml` | CI: LLVM + SDK (cached) + game, uploads exe + DLLs |
 | `tools/build_linux.sh`, `.github/workflows/build-linux.yml` | Linux: SDK + patches + game, staged in `dist-linux/` |
+| `patches/sdk/` | SDK fixes backported to the pinned v0.9.0 (applied by `tools/build_linux.sh`) |
 
 ## Codegen fixes so far
 - No analysis errors on the first pass.
