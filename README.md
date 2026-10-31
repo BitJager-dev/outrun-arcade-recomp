@@ -76,6 +76,11 @@ logs to `logs/`.
   (`O_RDONLY | O_WRONLY` = `O_WRONLY`), so loading the save failed with "end of file" and the game reported its
   save data as damaged. Windows was never affected. `tools/build_linux.sh` applies `patches/sdk/` after the
   rexglue-sdk-builds patches; drop it when moving to an SDK release that includes the fix.
+- **Texture exponent (SDK fix, Vulkan):** `patches/sdk/0002-vulkan-tfetch-exp-adjust.patch`. The SPIR-V
+  translator read a texture fetch's result exponent from fetch constant word 4 bits 13:18, which is inside the LOD
+  bias field, instead of word 3 (where `xenos.h` and the D3D12 translator have it). Textures with a LOD bias came
+  out near black. Found in the After Burner Climax recomp (missing terrain), where both recomps share one SDK
+  build, so both carry the same `patches/sdk/`. Not yet in upstream rexglue-sdk.
 - **GPU choice:** with more than one Vulkan device, set `vulkan_device` (index, listed in the log) in
   `outrun_arcade.toml`.
 
