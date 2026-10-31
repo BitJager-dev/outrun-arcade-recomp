@@ -2,7 +2,7 @@ name: Build Linux
 
 on:
   push:
-    branches: [main, linux-vulkan]
+    branches: [main, linux-vulkan, combined]
     tags: ['v*']
   pull_request:
   workflow_dispatch:

@@ -2,7 +2,7 @@ name: Build Windows
 
 on:
   push:
-    branches: [main]
+    branches: [main, combined]
     tags: ['v*']
   release:
     types: [published]
